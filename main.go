@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/base64"
+	"fmt"
 	"log"
 	"os"
 
@@ -15,11 +16,24 @@ import (
 )
 
 func main() {
-
 	region := os.Getenv("AWS_REGION")
 	accessKeyID := os.Getenv("AWS_ACCESS_KEY_ID")
 	secretAccessKey := os.Getenv("AWS_SECRET_ACCESS_KEY")
 	sessionToken := os.Getenv("AWS_SESSION_TOKEN")
+
+	if region == "" || accessKeyID == "" || secretAccessKey == "" || sessionToken == "" {
+		fmt.Print("AWS Region: ")
+		fmt.Scan(&region)
+
+		fmt.Print("AWS access key ID: ")
+		fmt.Scan(&accessKeyID)
+
+		fmt.Print("AWS secret access key: ")
+		fmt.Scan(&secretAccessKey)
+
+		fmt.Print("AWS session token: ")
+		fmt.Scan(&sessionToken)
+	}
 
 	creds := credentials.NewStaticCredentialsProvider(accessKeyID, secretAccessKey, sessionToken)
 	cfg, err := config.LoadDefaultConfig(
@@ -34,8 +48,18 @@ func main() {
 	svc := ssm.NewFromConfig(cfg)
 	kmsClient := kms.NewFromConfig(cfg)
 
-	plainText := os.Getenv("PLAINTEXT")
-	keyID := os.Getenv("KEY_ID")
+	var name string
+	var plainText string
+	var keyID string
+
+	fmt.Print("Parameter Name: ")
+	fmt.Scan(&name)
+
+	fmt.Print("Parameter Value: ")
+	fmt.Scan(&plainText)
+
+	fmt.Print("Encryption Key ID: ")
+	fmt.Scan(&keyID)
 
 	encryptedKeyOutput, err := kmsClient.Encrypt(context.TODO(), &kms.EncryptInput{
 		KeyId:     &keyID,
@@ -47,10 +71,10 @@ func main() {
 
 	encodedKey := base64.StdEncoding.EncodeToString(encryptedKeyOutput.CiphertextBlob)
 
-	log.Printf("Encoded Key: %s", encodedKey)
+	log.Printf("Encrypted and encoded value: %s", encodedKey)
 
 	input := &ssm.PutParameterInput{
-		Name:      aws.String(os.Getenv("NAME")),
+		Name:      aws.String(name),
 		Value:     &encodedKey,
 		Type:      types.ParameterTypeSecureString,
 		KeyId:     &keyID,
@@ -63,11 +87,11 @@ func main() {
 	}
 
 	output, _ := svc.GetParameter(context.TODO(), &ssm.GetParameterInput{
-		Name:           aws.String(os.Getenv("NAME")),
+		Name:           aws.String(name),
 		WithDecryption: aws.Bool(true),
 	})
 
-	log.Printf("Output GetParameter: %s", *output.Parameter.Value)
+	log.Printf("Stored Value: %s", *output.Parameter.Value)
 
 	decoded, err := base64.StdEncoding.DecodeString(*output.Parameter.Value)
 	if err != nil {
@@ -81,5 +105,5 @@ func main() {
 		log.Fatalf("Error decrypting parameter value: %v", err)
 	}
 
-	log.Printf("Final Output: %s", string(decryptedOutput.Plaintext))
+	log.Printf("Stored value after being decrypted and decoded: %s", string(decryptedOutput.Plaintext))
 }
