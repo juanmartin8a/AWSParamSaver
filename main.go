@@ -3,9 +3,12 @@ package main
 import (
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"os"
+	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
@@ -48,6 +51,8 @@ func main() {
 	svc := ssm.NewFromConfig(cfg)
 	kmsClient := kms.NewFromConfig(cfg)
 
+	var isParameterAFile bool
+
 	var name string
 	var plainText string
 	var keyID string
@@ -55,15 +60,64 @@ func main() {
 	fmt.Print("Parameter Name: ")
 	fmt.Scan(&name)
 
-	fmt.Print("Parameter Value: ")
-	fmt.Scan(&plainText)
+	for {
+		var response string
+
+		fmt.Print("Is Parameter a JSON file? (y/n): ")
+		fmt.Scanln(&response)
+
+		response = strings.ToLower(strings.TrimSpace(response))
+
+		if response == "y" || response == "yes" {
+			isParameterAFile = true
+			break
+		} else if response == "n" || response == "no" {
+			isParameterAFile = false
+			break
+		} else {
+			fmt.Println("Invalid input, please type 'y' or 'n'.")
+		}
+	}
+
+	if isParameterAFile {
+		fmt.Print("JSON File Path: ")
+		fmt.Scan(&plainText)
+	} else {
+		fmt.Print("Parameter Value: ")
+		fmt.Scan(&plainText)
+	}
 
 	fmt.Print("Encryption Key ID: ")
 	fmt.Scan(&keyID)
 
+	var plainTextValue []byte
+
+	if isParameterAFile {
+		fileBytes, err := ioutil.ReadFile(plainText)
+		if err != nil {
+			log.Fatalf("Error reading file: %v", err)
+		}
+
+		var jsonData map[string]interface{}
+		err = json.Unmarshal(fileBytes, &jsonData)
+		if err != nil {
+			log.Fatalf("Error parsing JSON: %v", err)
+		}
+
+		jsonBytes, err := json.Marshal(jsonData)
+		if err != nil {
+			log.Fatalf("Error encoding JSON: %v", err)
+		}
+
+		plainTextValue = jsonBytes
+
+	} else {
+		plainTextValue = []byte(plainText)
+	}
+
 	encryptedKeyOutput, err := kmsClient.Encrypt(context.TODO(), &kms.EncryptInput{
 		KeyId:     &keyID,
-		Plaintext: []byte(plainText),
+		Plaintext: plainTextValue,
 	})
 	if err != nil {
 		log.Fatalf("Error encrypting plaintext: %v", err)
