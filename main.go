@@ -51,6 +51,28 @@ func main() {
 	svc := ssm.NewFromConfig(cfg)
 	kmsClient := kms.NewFromConfig(cfg)
 
+    var choice int
+
+	for {
+		fmt.Println("What do you want to do?:")
+		fmt.Println("1: Add new parameter")
+		fmt.Println("2: Get parameter")
+
+		fmt.Scanln(&choice)
+
+        if choice != 1 && choice != 2 {
+            log.Printf("Invalid Choice")
+        }
+
+        if choice == 1 {
+            createParameter(svc, kmsClient)
+        } else if choice == 2 {
+            getParameter(svc, kmsClient)
+        }
+	}
+}
+
+func createParameter(svc *ssm.Client, kmsClient *kms.Client) {
 	var isParameterAFile bool
 
 	var name string
@@ -75,7 +97,7 @@ func main() {
 			isParameterAFile = false
 			break
 		} else {
-			fmt.Println("Invalid input, please type 'y' or 'n'.")
+			log.Println("Invalid input, please type 'y' or 'n'.")
 		}
 	}
 
@@ -87,13 +109,36 @@ func main() {
 		fmt.Scan(&plainText)
 	}
 
-	fmt.Print("Encryption Key ID: ")
-	fmt.Scan(&keyID)
+    var isEncrypted bool
+
+	for {
+		var response string
+
+		fmt.Print("Encrypt Parameter? (y/n): ")
+		fmt.Scanln(&response)
+
+		response = strings.ToLower(strings.TrimSpace(response))
+
+		if response == "y" || response == "yes" {
+			isEncrypted = true
+			break
+		} else if response == "n" || response == "no" {
+			isEncrypted = false
+			break
+		} else {
+			fmt.Println("Invalid input, please type 'y' or 'n'.")
+		}
+	}
+
+    if isEncrypted {
+        fmt.Print("Encryption Key ID: ")
+        fmt.Scan(&keyID)
+    }
 
 	var plainTextValue []byte
 
 	if isParameterAFile {
-		fileBytes, err := ioutil.ReadFile(plainText)
+		fileBytes, err := os.ReadFile(plainText)
 		if err != nil {
 			log.Fatalf("Error reading file: %v", err)
 		}
@@ -115,37 +160,81 @@ func main() {
 		plainTextValue = []byte(plainText)
 	}
 
-	encryptedKeyOutput, err := kmsClient.Encrypt(context.TODO(), &kms.EncryptInput{
-		KeyId:     &keyID,
-		Plaintext: plainTextValue,
-	})
-	if err != nil {
-		log.Fatalf("Error encrypting plaintext: %v", err)
-	}
+    value := string(plainTextValue)
 
-	encodedKey := base64.StdEncoding.EncodeToString(encryptedKeyOutput.CiphertextBlob)
+    if isEncrypted {
+        encryptedKeyOutput, err := kmsClient.Encrypt(context.TODO(), &kms.EncryptInput{
+            KeyId:     &keyID,
+            Plaintext: plainTextValue,
+        })
+        if err != nil {
+            log.Fatalf("Error encrypting plaintext: %v", err)
+        }
 
-	log.Printf("Encrypted and encoded value: %s", encodedKey)
+        encodedKey := base64.StdEncoding.EncodeToString(encryptedKeyOutput.CiphertextBlob)
+
+        log.Printf("Encrypted and encoded value: %s", encodedKey)
+
+        value = encodedKey 
+    }
+
 
 	input := &ssm.PutParameterInput{
 		Name:      aws.String(name),
-		Value:     &encodedKey,
+		Value:     &value,
 		Type:      types.ParameterTypeSecureString,
 		KeyId:     &keyID,
 		Overwrite: aws.Bool(true),
 	}
 
-	_, err = svc.PutParameter(context.TODO(), input)
+    _, err := svc.PutParameter(context.TODO(), input)
 	if err != nil {
-		log.Fatalf("Error putting parameter value: %v", err)
+		log.Fatalf("Error putting parameter: %v", err)
 	}
 
-	output, _ := svc.GetParameter(context.TODO(), &ssm.GetParameterInput{
+    log.Println("Success adding new parameter")
+    os.Exit(0)
+}
+
+func getParameter(ssmClient *ssm.Client, kmsClient *kms.Client) {
+    var name string
+    var isEncrypted bool
+
+    fmt.Print("Parameter Name: ")
+    fmt.Scan(&name)
+
+	for {
+		var response string
+
+		fmt.Print("Is the parameter encrypted? (y/n): ")
+		fmt.Scanln(&response)
+
+		response = strings.ToLower(strings.TrimSpace(response))
+
+		if response == "y" || response == "yes" {
+			isEncrypted = true
+			break
+		} else if response == "n" || response == "no" {
+			isEncrypted = false
+			break
+		} else {
+			fmt.Println("Invalid input, please type 'y' or 'n'.")
+		}
+	}
+
+
+	output, _ := ssmClient.GetParameter(context.TODO(), &ssm.GetParameterInput{
 		Name:           aws.String(name),
-		WithDecryption: aws.Bool(true),
+		WithDecryption: aws.Bool(isEncrypted),
 	})
 
-	log.Printf("Stored Value: %s", *output.Parameter.Value)
+    var value string
+
+    if !isEncrypted {
+        value = *output.Parameter.Value
+        log.Printf("Stored Value: %s", value)
+        os.Exit(0)
+    }
 
 	decoded, err := base64.StdEncoding.DecodeString(*output.Parameter.Value)
 	if err != nil {
@@ -159,5 +248,10 @@ func main() {
 		log.Fatalf("Error decrypting parameter value: %v", err)
 	}
 
-	log.Printf("Stored value after being decrypted and decoded: %s", string(decryptedOutput.Plaintext))
-}
+    log.Printf("Decrypted Stored Value: %s", string(decryptedOutput.Plaintext))
+    os.Exit(0)
+ }
+
+// TO DO
+// func deleteParameter() {
+// }
