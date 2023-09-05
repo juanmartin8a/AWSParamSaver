@@ -5,7 +5,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"os"
 	"strings"
@@ -97,7 +96,7 @@ func createParameter(svc *ssm.Client, kmsClient *kms.Client) {
 			isParameterAFile = false
 			break
 		} else {
-			log.Println("Invalid input, please type 'y' or 'n'.")
+			fmt.Println("Invalid input, please type 'y' or 'n'.")
 		}
 	}
 
@@ -173,8 +172,6 @@ func createParameter(svc *ssm.Client, kmsClient *kms.Client) {
 
         encodedKey := base64.StdEncoding.EncodeToString(encryptedKeyOutput.CiphertextBlob)
 
-        log.Printf("Encrypted and encoded value: %s", encodedKey)
-
         value = encodedKey 
     }
 
@@ -192,7 +189,7 @@ func createParameter(svc *ssm.Client, kmsClient *kms.Client) {
 		log.Fatalf("Error putting parameter: %v", err)
 	}
 
-    log.Println("Success adding new parameter")
+    fmt.Println("Success adding new parameter")
     os.Exit(0)
 }
 
@@ -232,7 +229,7 @@ func getParameter(ssmClient *ssm.Client, kmsClient *kms.Client) {
 
     if !isEncrypted {
         value = *output.Parameter.Value
-        log.Printf("Stored Value: %s", value)
+        fmt.Printf("Stored Value: %s", value)
         os.Exit(0)
     }
 
@@ -248,7 +245,7 @@ func getParameter(ssmClient *ssm.Client, kmsClient *kms.Client) {
 		log.Fatalf("Error decrypting parameter value: %v", err)
 	}
 
-    log.Printf("Decrypted Stored Value: %s", string(decryptedOutput.Plaintext))
+    fmt.Printf("Decrypted Stored Value: %s", string(decryptedOutput.Plaintext))
     os.Exit(0)
  }
 
