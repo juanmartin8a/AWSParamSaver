@@ -220,10 +220,13 @@ func getParameter(ssmClient *ssm.Client, kmsClient *kms.Client) {
 	}
 
 
-	output, _ := ssmClient.GetParameter(context.TODO(), &ssm.GetParameterInput{
+	output, err := ssmClient.GetParameter(context.TODO(), &ssm.GetParameterInput{
 		Name:           aws.String(name),
 		WithDecryption: aws.Bool(isEncrypted),
 	})
+    if err != nil {
+		log.Fatalf("Error getting parameter value: %v", err)
+    }
 
     var value string
 
